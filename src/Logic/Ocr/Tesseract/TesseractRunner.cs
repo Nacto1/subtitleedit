@@ -105,6 +105,7 @@ namespace Nikse.SubtitleEdit.Logic.Ocr.Tesseract
                     process.WaitForExit(30000);
                     ms = (System.DateTime.UtcNow.Ticks - ms) / System.TimeSpan.TicksPerMillisecond;
                     System.Threading.Interlocked.Decrement(ref _tessCounter);
+                    process.Refresh();
                     if (process.HasExited)
                     {
                         Log(id, $"hasexited=|{process.HasExited}| exitcode=|{process.ExitCode}| ms={ms}");
