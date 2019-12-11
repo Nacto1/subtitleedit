@@ -9,12 +9,7 @@ namespace Nikse.SubtitleEdit.Logic.Ocr.Tesseract
 {
     public class TesseractRunner
     {
-        private static readonly object[] _ProcessLock =
-        {
-            new object(), new object(), new object(), new object(),
-            new object(), new object(), new object(), new object(),
-            new object(), new object(), new object()
-        };
+        private static readonly object _ProcessLock = new object();
         private static int _tessCounter;
         private static int _runCounter;
 
@@ -40,7 +35,7 @@ namespace Nikse.SubtitleEdit.Logic.Ocr.Tesseract
             Log(id, $"[Tesseract OCR] image-file=|{imageFileName}|");
             LastError = null;
             var tempTextFileName = Path.GetTempPath() + Guid.NewGuid();
-            lock (_ProcessLock[id % _ProcessLock.Length])
+            // lock (_ProcessLock)
             {
                 using (var process = new Process())
                 {
@@ -87,25 +82,53 @@ namespace Nikse.SubtitleEdit.Logic.Ocr.Tesseract
                     }
 
                     var ms = 0L;
-                    try
+                    if (_runningOnWindows)
                     {
-                        var tc = System.Threading.Interlocked.Increment(ref _tessCounter);
-                        Log(id, $"({tc,2}) cwd=|{process.StartInfo.WorkingDirectory}| file=|{process.StartInfo.FileName}| args=|{process.StartInfo.Arguments}|");
-                        ms = System.DateTime.UtcNow.Ticks;
-                        process.Start();
-                    }
-                    catch (Exception exception)
-                    {
-                        Log(id, $"EXCEPTION: {exception.Message}");
+                        try
+                        {
+                            var tc = System.Threading.Interlocked.Increment(ref _tessCounter);
+                            Log(id, $"({tc,2}) cwd=|{process.StartInfo.WorkingDirectory}| file=|{process.StartInfo.FileName}| args=|{process.StartInfo.Arguments}|");
+                            ms = System.DateTime.UtcNow.Ticks;
+                            process.Start();
+                        }
+                        catch (Exception exception)
+                        {
+                            Log(id, $"EXCEPTION: {exception.Message}");
+                            System.Threading.Interlocked.Decrement(ref _tessCounter);
+                            LastError = exception.Message + Environment.NewLine + exception.StackTrace;
+                            TesseractErrors.Add(LastError);
+                            return "Error!";
+                        }
+                        process.WaitForExit(30000);
+                        ms = (System.DateTime.UtcNow.Ticks - ms) / System.TimeSpan.TicksPerMillisecond;
                         System.Threading.Interlocked.Decrement(ref _tessCounter);
-                        LastError = exception.Message + Environment.NewLine + exception.StackTrace;
-                        TesseractErrors.Add(LastError);
-                        return "Error!";
                     }
-                    process.WaitForExit(30000);
-                    ms = (System.DateTime.UtcNow.Ticks - ms) / System.TimeSpan.TicksPerMillisecond;
-                    System.Threading.Interlocked.Decrement(ref _tessCounter);
-                    process.Refresh();
+                    else
+                    {
+                        lock (_ProcessLock)
+                        {
+                            try
+                            {
+                                var tc = System.Threading.Interlocked.Increment(ref _tessCounter);
+                                Log(id, $"({tc,2}) cwd=|{process.StartInfo.WorkingDirectory}| file=|{process.StartInfo.FileName}| args=|{process.StartInfo.Arguments}|");
+                                ms = System.DateTime.UtcNow.Ticks;
+                                process.Start();
+                            }
+                            catch (Exception exception)
+                            {
+                                Log(id, $"EXCEPTION: {exception.Message}");
+                                System.Threading.Interlocked.Decrement(ref _tessCounter);
+                                LastError = exception.Message + Environment.NewLine + exception.StackTrace;
+                                TesseractErrors.Add(LastError);
+                                return "Error!";
+                            }
+                            process.WaitForExit(30000);
+                            ms = (System.DateTime.UtcNow.Ticks - ms) / System.TimeSpan.TicksPerMillisecond;
+                            System.Threading.Interlocked.Decrement(ref _tessCounter);
+                            process.Refresh();
+                        }
+                    }
+
                     if (process.HasExited)
                     {
                         Log(id, $"hasexited=|{process.HasExited}| exitcode=|{process.ExitCode}| ms={ms}");
